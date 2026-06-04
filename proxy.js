@@ -1,30 +1,30 @@
 const WebSocket = require('ws');
 const net = require('net');
 
-// Escuchar en el puerto 8080 para conexiones WebSocket entrantes
+// Servidor WS escuchando externamente en el puerto 8080
 const wss = new WebSocket.Server({ port: 8080 }, () => {
-    console.log("Servidor WebSocket Proxy escuchando en el puerto 8080");
+    console.log("Puente WebSocket-SSH activo en el puerto 8080");
 });
 
 wss.on('connection', (ws) => {
-    console.log("Cliente conectado vía WebSocket. Abriendo túnel hacia SSH (puerto 22)...");
+    console.log("Nueva conexión WS recibida. Conectando al SSH interno (puerto 22)...");
 
-    # Conectar al servidor SSH local dentro del contenedor
+    // Crear la conexión TCP interna hacia el SSH local
     const tcpSocket = net.connect(22, '127.0.0.1', () => {
-        console.log("Conectado exitosamente al SSH interno.");
+        console.log("Túnel establecido con el SSH local de Alpine.");
     });
 
-    # Pasar datos de WebSocket a SSH
+    // Enviar lo que viene del WebSocket directo al SSH
     ws.on('message', (data) => {
         tcpSocket.write(data);
     });
 
-    # Pasar datos de SSH a WebSocket
+    // Enviar la respuesta del SSH de vuelta al cliente WebSocket
     tcpSocket.on('data', (data) => {
         ws.send(data, { binary: true });
     });
 
-    # Manejo de cierres y errores
+    // Controlar cierres y errores para evitar fugas de memoria
     ws.on('close', () => tcpSocket.end());
     tcpSocket.on('close', () => ws.close());
     ws.on('error', () => tcpSocket.end());
