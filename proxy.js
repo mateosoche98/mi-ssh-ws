@@ -1,46 +1,32 @@
-const http = require('http');
-const net = require('net');
 const WebSocket = require('ws');
+const net = require('net');
 
-// Crear un servidor HTTP nativo para capturar y limpiar las cabeceras del Payload
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('SSH WebSocket Bridge Active');
-});
-
-const wss = new WebSocket.Server({ noServer: true });
-
-// Interceptar la actualización de WebSocket ignorando el Host del payload
-server.on('upgrade', (request, socket, head) => {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
-    });
+// Escuchar en el puerto 8080 para conexiones WebSocket entrantes
+const wss = new WebSocket.Server({ port: 8080 }, () => {
+    console.log("Servidor WebSocket Proxy escuchando en el puerto 8080");
 });
 
 wss.on('connection', (ws) => {
-    const sshSocket = net.connect(22, '127.0.0.1', () => {
-        // Conexión exitosa al SSH interno
+    console.log("Cliente conectado vía WebSocket. Abriendo túnel hacia SSH (puerto 22)...");
+
+    # Conectar al servidor SSH local dentro del contenedor
+    const tcpSocket = net.connect(22, '127.0.0.1', () => {
+        console.log("Conectado exitosamente al SSH interno.");
     });
 
-    ws.on('message', (msg) => {
-        if (Buffer.isBuffer(msg)) {
-            sshSocket.write(msg);
-        } else {
-            sshSocket.write(Buffer.from(msg));
-        }
+    # Pasar datos de WebSocket a SSH
+    ws.on('message', (data) => {
+        tcpSocket.write(data);
     });
 
-    sshSocket.on('data', (data) => {
-        ws.send(data);
+    # Pasar datos de SSH a WebSocket
+    tcpSocket.on('data', (data) => {
+        ws.send(data, { binary: true });
     });
 
-    ws.on('close', () => sshSocket.end());
-    sshSocket.on('close', () => ws.close());
-    sshSocket.on('error', () => ws.close());
-    ws.on('error', () => sshSocket.end());
-});
-
-// Escuchar en el puerto requerido por Render
-server.listen(80, () => {
-    console.log('Servidor puente HTTP/WS activo en puerto 80');
+    # Manejo de cierres y errores
+    ws.on('close', () => tcpSocket.end());
+    tcpSocket.on('close', () => ws.close());
+    ws.on('error', () => tcpSocket.end());
+    tcpSocket.on('error', () => ws.close());
 });
